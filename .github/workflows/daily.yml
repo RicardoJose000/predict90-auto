@@ -1,0 +1,96 @@
+name: Daily predictions
+
+on:
+  schedule:
+    - cron: "30 4 * * *"        # every day 05:30 Nigeria time (GitHub can start it up to an hour later)
+  workflow_dispatch:            # the "Run workflow" button: run it now
+
+permissions:
+  contents: write               # only for the small monthly "keep alive" note
+  pages: write
+  id-token: write
+
+concurrency:
+  group: daily-predictions
+  cancel-in-progress: false
+
+jobs:
+  predict:
+    # the original template only runs when started by hand; every copy runs on the schedule
+    if: github.event_name == 'workflow_dispatch' || github.repository != 'RicardoJose000/predict90-auto'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Get the newest predictor (same code as the Colab link)
+        run: |
+          curl -sSfL -o code.zip https://github.com/RicardoJose000/predict90-colab/archive/refs/heads/main.zip
+          unzip -q code.zip && mv predict90-colab-main app
+
+      - name: Install
+        run: pip install -q -r app/requirements.txt cryptography
+
+      - name: Bring back yesterday's files (data, models, bet tracker)
+        uses: actions/cache/restore@v4
+        with:
+          path: files
+          key: p90-files-${{ github.run_id }}
+          restore-keys: p90-files-
+
+      - name: Predict today and tomorrow
+        env:
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+          P90_FILES: ${{ github.workspace }}/files
+        run: |
+          if [ -z "$API_FOOTBALL_KEY" ]; then echo "::error::API_FOOTBALL_KEY is missing: add it in Settings > Secrets and variables > Actions"; exit 1; fi
+          mkdir -p files
+          if [ -f settings.json ]; then cp settings.json files/settings.json; fi
+          cd app && python run_daily.py --quiet
+
+      - name: Lock the page with your password
+        env:
+          PAGE_PASSWORD: ${{ secrets.PAGE_PASSWORD }}
+        run: |
+          page="files/output/predictions_$(date -u +%F).html"
+          if [ ! -f "$page" ]; then
+            page=empty.html
+            echo "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><body style='font:17px system-ui;padding:24px'><h2>No matches today or tomorrow</h2><p>No matches in your leagues, cups or national teams for today and tomorrow. The next run is tomorrow morning.</p>" > "$page"
+          fi
+          python lock_page.py "$page" site/index.html "${page%.html}.xlsx" files/output/bet_tracker.xlsx
+          find files/output -name 'predictions_*' -mtime +7 -delete
+
+      - name: Keep the files for tomorrow
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: files
+          key: p90-files-${{ github.run_id }}
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+      - name: Keep the schedule alive (GitHub stops schedules after 60 quiet days)
+        run: |
+          last=$(git log -1 --format=%ct)
+          if [ $(( $(date +%s) - last )) -gt $(( 40 * 86400 )) ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            date -u > last_run.txt
+            git add last_run.txt
+            git commit -m "keep the daily run alive"
+            git push
+          fi
