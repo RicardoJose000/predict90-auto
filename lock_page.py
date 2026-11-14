@@ -8,7 +8,9 @@ The password comes from the environment variable PAGE_PASSWORD (a GitHub secret)
 """
 import base64
 import json
+import html
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,7 +40,11 @@ def main():
                       for f in files],
             "made": datetime.now(timezone.utc).strftime("%d %b %Y %H:%M UTC")}
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(LOCK.replace("__BLOB__", json.dumps(blob)), encoding="utf-8")
+    # the lock screen shows the same name as the page (setting page_title)
+    m = re.search(r"<title>(.*?)</title>", page.read_text(encoding="utf-8", errors="ignore"), re.S)
+    name = m[1].strip() if m and m[1].strip() else "PrincePredict"
+    lock = LOCK.replace("__NAME__", html.escape(html.unescape(name)))
+    out.write_text(lock.replace("__BLOB__", json.dumps(blob)), encoding="utf-8")
     print(f"locked page written: {out} ({out.stat().st_size / 1e6:.1f} MB, {len(files)} files inside)")
 
 
@@ -46,7 +52,7 @@ LOCK = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>PREDICT/90</title>
+<title>__NAME__</title>
 <style>
 :root{--bg:#f6f5f1;--card:#fff;--ink:#16161a;--mut:#6b6a66;--line:#e2e0d9;--acc:#1f6f43;--bad:#b3261e}
 @media (prefers-color-scheme:dark){:root{--bg:#141413;--card:#1f1f1d;--ink:#f0efea;--mut:#a3a19a;--line:#34332f;--acc:#57b884;--bad:#f2867c}}
@@ -60,7 +66,7 @@ label{display:flex;gap:8px;align-items:center;margin-top:12px;font-size:14px;col
 #msg{min-height:22px;margin-top:10px;font-size:14px;color:var(--bad)}
 </style></head><body>
 <form class="card" id="f" autocomplete="on">
-<h1>PREDICT/90</h1><p id="made"></p>
+<h1>__NAME__</h1><p id="made"></p>
 <input type="text" name="username" value="predict90" autocomplete="username" hidden>
 <input type="password" id="pw" placeholder="Password" autocomplete="current-password" required>
 <label><input type="checkbox" id="keep" checked> Remember on this device</label>
