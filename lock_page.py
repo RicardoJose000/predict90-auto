@@ -67,6 +67,7 @@ label{display:flex;gap:8px;align-items:center;margin-top:12px;font-size:14px;col
 <button type="submit" id="go">Open</button><div id="msg"></div>
 </form>
 <script>
+(() => {   // nothing global: the unlocked page runs in this same window and may use the same names
 const B = __BLOB__;
 const $ = id => document.getElementById(id);
 $("made").textContent = "Updated " + B.made;
@@ -97,6 +98,7 @@ $("f").addEventListener("submit", async e => {
 });
 (async () => { let pw = null; try { pw = localStorage.getItem("p90pw"); } catch (e) {}
   if (pw) { $("go").textContent = "Opening..."; try { await unlock(pw, true); } catch (e) { $("go").textContent = "Open"; try { localStorage.removeItem("p90pw"); } catch (x) {} } } })();
+})();
 </script></body></html>
 """
 
