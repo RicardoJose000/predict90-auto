@@ -1,8 +1,14 @@
 name: Daily predictions
 
 on:
+  # GitHub often starts scheduled runs late (sometimes hours), so there are 4 morning tries (Nigeria time:
+  # 03:43, 04:51, 05:37, 06:47). The first one that starts makes the page; the others see today's page
+  # is already made and stop in seconds, without using any API requests.
   schedule:
-    - cron: "30 4 * * *"        # every day 05:30 Nigeria time (GitHub can start it up to an hour later)
+    - cron: "43 2 * * *"
+    - cron: "51 3 * * *"
+    - cron: "37 4 * * *"
+    - cron: "47 5 * * *"
   workflow_dispatch:            # the "Run workflow" button: run it now
 
 permissions:
@@ -26,18 +32,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Get the newest predictor (same code as the Colab link)
-        run: |
-          curl -sSfL -o code.zip https://github.com/RicardoJose000/predict90-colab/archive/refs/heads/main.zip
-          unzip -q code.zip && mv predict90-colab-main app
-
-      - name: Install
-        run: pip install -q -r app/requirements.txt cryptography
-
       - name: Bring back yesterday's files (data, models, bet tracker)
         uses: actions/cache/restore@v4
         with:
@@ -45,7 +39,31 @@ jobs:
           key: p90-files-${{ github.run_id }}
           restore-keys: p90-files-
 
+      - name: Already made today?
+        id: done
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] && [ -f "files/output/predictions_$(date -u +%F).html" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Today's page is already made by an earlier run: nothing to do (the Run workflow button always makes a fresh one)"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.done.outputs.skip != 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Get the newest predictor (same code as the Colab link)
+        if: steps.done.outputs.skip != 'true'
+        run: |
+          curl -sSfL -o code.zip https://github.com/RicardoJose000/predict90-colab/archive/refs/heads/main.zip
+          unzip -q code.zip && mv predict90-colab-main app
+
+      - name: Install
+        if: steps.done.outputs.skip != 'true'
+        run: pip install -q -r app/requirements.txt cryptography
+
       - name: Predict today and tomorrow
+        if: steps.done.outputs.skip != 'true'
         env:
           API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
           P90_FILES: ${{ github.workspace }}/files
@@ -56,6 +74,7 @@ jobs:
           cd app && python run_daily.py --quiet
 
       - name: Lock the page with your password
+        if: steps.done.outputs.skip != 'true'
         env:
           PAGE_PASSWORD: ${{ secrets.PAGE_PASSWORD }}
         run: |
@@ -68,19 +87,22 @@ jobs:
           find files/output -name 'predictions_*' -mtime +7 -delete
 
       - name: Keep the files for tomorrow
-        if: always()
+        if: always() && steps.done.outputs.skip != 'true'
         uses: actions/cache/save@v4
         with:
           path: files
           key: p90-files-${{ github.run_id }}
 
       - uses: actions/configure-pages@v5
+        if: steps.done.outputs.skip != 'true'
 
       - uses: actions/upload-pages-artifact@v3
+        if: steps.done.outputs.skip != 'true'
         with:
           path: site
 
       - id: deploy
+        if: steps.done.outputs.skip != 'true'
         uses: actions/deploy-pages@v4
 
       - name: Keep the schedule alive (GitHub stops schedules after 60 quiet days)
