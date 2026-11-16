@@ -1,14 +1,13 @@
 name: Daily predictions
 
 on:
-  # GitHub often starts scheduled runs late (sometimes hours), so there are 4 morning tries (Nigeria time:
-  # 03:43, 04:51, 05:37, 06:47). The first one that starts makes the page; the others see today's page
-  # is already made and stop in seconds, without using any API requests.
+  # GitHub often starts scheduled runs late, sometimes 8 hours, so it tries every hour from the evening
+  # before (Nigeria time 18:13 to 06:13, plus 02:41 to 06:41). Before midnight UTC the day's page is already
+  # made, so those tries stop in seconds. After midnight the first try that starts makes the new page,
+  # the others stop in seconds. No API requests are used by a try that stops.
   schedule:
-    - cron: "43 2 * * *"
-    - cron: "51 3 * * *"
-    - cron: "37 4 * * *"
-    - cron: "47 5 * * *"
+    - cron: "13 0-5,17-23 * * *"
+    - cron: "41 1-5 * * *"
   workflow_dispatch:            # the "Run workflow" button: run it now
 
 permissions:
